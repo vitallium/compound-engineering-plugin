@@ -23,7 +23,7 @@ import { parseFrontmatter } from "../src/utils/frontmatter"
 const repoRoot = path.join(import.meta.dir, "..")
 const cliEntry = path.join(repoRoot, "src", "index.ts")
 
-const IMPLEMENTED_TARGETS = ["opencode", "codex", "pi", "antigravity"] as const
+const IMPLEMENTED_TARGETS = ["opencode", "codex", "pi", "antigravity", "vibe"] as const
 type Target = (typeof IMPLEMENTED_TARGETS)[number]
 
 const PLUGIN_NAMES = ["compound-engineering"] as const
@@ -193,6 +193,11 @@ function targetInvocation(target: Target, tempRoot: string): { args: string[]; r
       const out = path.join(tempRoot, "antigravity-out")
       return { args: ["--output", out], root: path.join(out, ".agy") }
     }
+    case "vibe": {
+      // vibe ignores --output entirely; pin the home to keep writes in temp.
+      const out = path.join(tempRoot, "vibe-home", ".vibe")
+      return { args: ["--vibe-home", out], root: out }
+    }
   }
 }
 
@@ -278,7 +283,7 @@ for (const pluginName of PLUGIN_NAMES) {
 
       // Sandbox safety: with explicit output flags, no target may fall back to
       // a home-relative default (the redirected HOME would catch it).
-      for (const leaked of [".codex", ".pi", ".agy", ".agents", path.join(".config", "opencode")]) {
+      for (const leaked of [".codex", ".pi", ".agy", ".agents", ".vibe", path.join(".config", "opencode")]) {
         expect(
           await exists(path.join(fakeHome, leaked)),
           `convert leaked ${leaked} into HOME despite explicit output flags`,
@@ -380,6 +385,23 @@ for (const pluginName of PLUGIN_NAMES) {
       const manifest = readJson(path.join(root, "plugin.json"))
       expect(manifest.name).toBe(pluginName)
       expect(typeof manifest.version).toBe("string")
+    })
+
+    test("vibe output matches the source inventory", () => {
+      const { root } = getConversion(pluginName, "vibe")
+      const expectedSkills = [...new Set([...skillsForPlatform(inventory, "vibe"), ...inventory.commands])].sort()
+
+      expect(listFileBasenames(path.join(root, "agents"), ".toml")).toEqual(inventory.agents)
+      expect(listDirNames(path.join(root, "skills"))).toEqual(expectedSkills)
+      expectSkillDirsHaveSkillMd(path.join(root, "skills"), expectedSkills)
+      expect(listFileBasenames(path.join(root, "prompts"), ".md")).toEqual(inventory.agents)
+
+      const vibeContent = walkFiles(root)
+        .filter((file) => file.endsWith(".md"))
+        .map((file) => readFileSync(file, "utf8"))
+        .join("\n")
+      expect(vibeContent).not.toContain("`todo`")
+      expect(vibeContent).not.toContain("todo tool")
     })
 
     test("every emitted .json parses and every emitted .md has parseable frontmatter", () => {
