@@ -24,3 +24,8 @@ export function resolveCodexHome(value: unknown): string {
   const defaultPath = process.env.CODEX_HOME?.trim() || path.join(os.homedir(), ".codex")
   return resolveTargetHome(value, path.resolve(expandHome(defaultPath)))
 }
+
+export function resolveVibeHome(value: unknown): string {
+  const defaultPath = process.env.VIBE_HOME?.trim() || path.join(os.homedir(), ".vibe")
+  return resolveTargetHome(value, path.resolve(expandHome(defaultPath)))
+}
