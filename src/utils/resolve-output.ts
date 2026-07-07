@@ -7,16 +7,23 @@ export function resolveTargetOutputRoot(options: {
   outputRoot: string
   codexHome: string
   piHome: string
+  vibeHome: string
   pluginName?: string
   hasExplicitOutput: boolean
+  hasExplicitVibeHome?: boolean
   scope?: TargetScope
 }): string {
-  const { targetName, outputRoot, codexHome, piHome, hasExplicitOutput } = options
+  const { targetName, outputRoot, codexHome, piHome, vibeHome, hasExplicitOutput, hasExplicitVibeHome, scope } = options
   if (targetName === "codex") return codexHome
   if (targetName === "pi") return piHome
   if (targetName === "antigravity") {
     const base = hasExplicitOutput ? outputRoot : process.cwd()
     return path.join(base, ".agy")
+  }
+  if (targetName === "vibe") {
+    return resolveVibeWriteScope(hasExplicitOutput, scope, Boolean(hasExplicitVibeHome)) === "workspace"
+      ? outputRoot
+      : vibeHome
   }
   if (targetName === "kiro") {
     const base = hasExplicitOutput ? outputRoot : process.cwd()
@@ -30,6 +37,42 @@ export function resolveTargetOutputRoot(options: {
     return outputRoot
   }
   return outputRoot
+}
+
+export function resolveVibeWriteScope(
+  hasExplicitOutput: boolean,
+  scope: TargetScope | undefined,
+  hasExplicitVibeHome: boolean,
+): TargetScope {
+  if (scope === "workspace" || (hasExplicitOutput && scope !== "global" && !hasExplicitVibeHome)) {
+    return "workspace"
+  }
+  return "global"
+}
+
+export function resolveTargetWriteScope(options: {
+  targetName: string
+  hasExplicitOutput: boolean
+  hasExplicitVibeHome: boolean
+  scope?: TargetScope
+  vibeScope?: TargetScope
+}): TargetScope | undefined {
+  if (options.targetName === "vibe") {
+    return resolveVibeWriteScope(options.hasExplicitOutput, options.vibeScope, options.hasExplicitVibeHome)
+  }
+  if (options.targetName === "opencode") {
+    return resolveOpenCodeWriteScope(options.hasExplicitOutput, options.scope)
+  }
+  return options.scope
+}
+
+export function validateVibeOutputOptions(options: {
+  scope?: TargetScope
+  hasExplicitVibeHome: boolean
+}): void {
+  if (options.scope === "workspace" && options.hasExplicitVibeHome) {
+    throw new Error("--vibe-home cannot be used with --scope workspace.")
+  }
 }
 
 /**
