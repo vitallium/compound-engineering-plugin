@@ -172,13 +172,16 @@ export async function copyDir(sourceDir: string, targetDir: string): Promise<voi
  * By default only SKILL.md is transformed (safe for slash-command rewrites
  * that shouldn't touch reference files). Set `transformAllMarkdown` to also
  * transform reference .md files — needed when the transform rewrites content
- * that appears in reference files (e.g. fully-qualified agent names).
+ * that appears in reference files. Pass `transformMarkdownContent` when
+ * reference files need body-only transforms instead of SKILL.md frontmatter
+ * rewrites.
  */
 export async function copySkillDir(
   sourceDir: string,
   targetDir: string,
   transformSkillContent?: (content: string) => string,
   transformAllMarkdown?: boolean,
+  transformMarkdownContent?: (content: string) => string,
 ): Promise<void> {
   await ensureDir(targetDir)
   const entries = await fs.readdir(sourceDir, { withFileTypes: true })
@@ -188,14 +191,16 @@ export async function copySkillDir(
     const targetPath = path.join(targetDir, entry.name)
 
     if (entry.isDirectory()) {
-      await copySkillDir(sourcePath, targetPath, transformSkillContent, transformAllMarkdown)
+      await copySkillDir(sourcePath, targetPath, transformSkillContent, transformAllMarkdown, transformMarkdownContent)
     } else if (entry.isFile()) {
-      const shouldTransform = transformSkillContent && (
-        entry.name === "SKILL.md" || (transformAllMarkdown && entry.name.endsWith(".md"))
-      )
-      if (shouldTransform) {
+      const shouldTransformSkill = Boolean(transformSkillContent && entry.name === "SKILL.md")
+      const shouldTransformMarkdown = Boolean(transformAllMarkdown && entry.name.endsWith(".md"))
+      if (shouldTransformSkill || shouldTransformMarkdown) {
         const content = await readText(sourcePath)
-        await writeText(targetPath, transformSkillContent(content))
+        const transform = shouldTransformSkill
+          ? transformSkillContent
+          : (transformMarkdownContent ?? transformSkillContent)
+        await writeText(targetPath, transform ? transform(content) : content)
       } else {
         await ensureDir(path.dirname(targetPath))
         await fs.copyFile(sourcePath, targetPath)

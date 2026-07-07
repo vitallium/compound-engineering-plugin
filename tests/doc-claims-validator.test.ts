@@ -70,6 +70,7 @@ beforeAll(() => {
   sh(repo, "git", ["init", "-b", "main"])
   sh(repo, "git", ["config", "user.email", "test@example.com"])
   sh(repo, "git", ["config", "user.name", "Test"])
+  sh(repo, "git", ["config", "commit.gpgsign", "false"])
   mkdirSync(path.join(repo, "src"), { recursive: true })
   mkdirSync(path.join(repo, "docs/solutions/workflow"), { recursive: true })
   mkdirSync(path.join(repo, "docs/solutions/best-practices"), {
