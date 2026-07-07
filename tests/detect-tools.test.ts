@@ -62,6 +62,7 @@ describe("detectInstalledTools", () => {
     await fs.mkdir(path.join(tempHome, ".factory"), { recursive: true })
     await fs.mkdir(path.join(tempHome, ".pi"), { recursive: true })
     await fs.mkdir(path.join(tempHome, ".omp"), { recursive: true })
+    await fs.mkdir(path.join(tempHome, ".vibe"), { recursive: true })
 
     const results = await detectInstalledTools(tempHome, tempCwd)
 
@@ -69,6 +70,7 @@ describe("detectInstalledTools", () => {
     expect(results.find((t) => t.name === "droid")?.detected).toBe(true)
     expect(results.find((t) => t.name === "pi")?.detected).toBe(true)
     expect(results.find((t) => t.name === "omp")?.detected).toBe(true)
+    expect(results.find((t) => t.name === "vibe")?.detected).toBe(true)
   })
 
   test("detects antigravity at ~/.gemini/antigravity-cli", async () => {
@@ -163,6 +165,54 @@ describe("detectInstalledTools", () => {
     })
   })
 
+  describe("vibe VIBE_HOME", () => {
+    const originalEnv = process.env.VIBE_HOME
+
+    afterEach(() => {
+      if (originalEnv === undefined) {
+        delete process.env.VIBE_HOME
+      } else {
+        process.env.VIBE_HOME = originalEnv
+      }
+    })
+
+    test("detects vibe at VIBE_HOME for default real-user detection", async () => {
+      const tempCwd = await fs.mkdtemp(path.join(os.tmpdir(), "detect-vibe-env-cwd-"))
+      const customRoot = await fs.mkdtemp(path.join(os.tmpdir(), "detect-vibe-env-root-"))
+
+      process.env.VIBE_HOME = customRoot
+
+      const results = await detectInstalledTools(undefined, tempCwd)
+      const vibe = results.find((t) => t.name === "vibe")
+      expect(vibe?.detected).toBe(true)
+      expect(vibe?.reason).toContain(customRoot)
+    })
+
+    test("ignores ambient VIBE_HOME when caller provides an explicit home", async () => {
+      const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "detect-vibe-explicit-home-"))
+      const tempCwd = await fs.mkdtemp(path.join(os.tmpdir(), "detect-vibe-explicit-cwd-"))
+      const customRoot = await fs.mkdtemp(path.join(os.tmpdir(), "detect-vibe-explicit-root-"))
+
+      process.env.VIBE_HOME = customRoot
+
+      const results = await detectInstalledTools(tempHome, tempCwd)
+      const vibe = results.find((t) => t.name === "vibe")
+      expect(vibe?.detected).toBe(false)
+      expect(vibe?.reason).toBe("not found")
+    })
+
+    test("detects an explicit Vibe home independently of HOME and VIBE_HOME", async () => {
+      const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "detect-vibe-cli-home-"))
+      const tempCwd = await fs.mkdtemp(path.join(os.tmpdir(), "detect-vibe-cli-cwd-"))
+      const customRoot = await fs.mkdtemp(path.join(os.tmpdir(), "detect-vibe-cli-root-"))
+
+      const results = await detectInstalledTools(tempHome, tempCwd, { vibeHome: customRoot })
+      const vibe = results.find((t) => t.name === "vibe")
+      expect(vibe?.detected).toBe(true)
+      expect(vibe?.reason).toContain(customRoot)
+    })
+  })
+
   test("detects copilot from project-specific skills without generic .github false positives", async () => {
     const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "detect-copilot-home-"))
     const tempCwd = await fs.mkdtemp(path.join(os.tmpdir(), "detect-copilot-cwd-"))
@@ -177,6 +227,22 @@ describe("detectInstalledTools", () => {
     results = await detectInstalledTools(tempHome, tempCwd)
     expect(results.find((t) => t.name === "copilot")?.detected).toBe(true)
     expect(results.find((t) => t.name === "copilot")?.reason).toContain(".github/skills")
+  })
+
+  test("detects vibe from project-level .vibe without false positives from sibling targets", async () => {
+    const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "detect-vibe-home-"))
+    const tempCwd = await fs.mkdtemp(path.join(os.tmpdir(), "detect-vibe-cwd-"))
+
+    await fs.mkdir(path.join(tempCwd, ".kiro"), { recursive: true })
+
+    let results = await detectInstalledTools(tempHome, tempCwd)
+    expect(results.find((t) => t.name === "vibe")?.detected).toBe(false)
+
+    await fs.mkdir(path.join(tempCwd, ".vibe"), { recursive: true })
+
+    results = await detectInstalledTools(tempHome, tempCwd)
+    expect(results.find((t) => t.name === "vibe")?.detected).toBe(true)
+    expect(results.find((t) => t.name === "vibe")?.reason).toContain(".vibe")
   })
 })
 
@@ -196,6 +262,7 @@ describe("getDetectedTargetNames", () => {
     expect(names).not.toContain("opencode")
     expect(names).not.toContain("droid")
     expect(names).not.toContain("pi")
+    expect(names).not.toContain("vibe")
     expect(names).not.toContain("cursor")
   })
 

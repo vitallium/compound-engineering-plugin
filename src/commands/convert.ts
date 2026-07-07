@@ -5,8 +5,8 @@ import { loadClaudePlugin } from "../parsers/claude"
 import { targets, validateScope } from "../targets"
 import type { ClaudeToOpenCodeOptions, PermissionMode } from "../converters/claude-to-opencode"
 import { stripCodexAgentsToolMap } from "../utils/codex-agents"
-import { expandHome, resolveCodexHome, resolveTargetHome } from "../utils/resolve-home"
-import { resolveOpenCodeWriteScope, resolveTargetOutputRoot } from "../utils/resolve-output"
+import { expandHome, resolveCodexHome, resolveTargetHome, resolveVibeHome } from "../utils/resolve-home"
+import { resolveTargetOutputRoot, resolveTargetWriteScope, validateVibeOutputOptions } from "../utils/resolve-output"
 import { detectInstalledTools } from "../utils/detect-tools"
 
 const permissionModes: PermissionMode[] = ["none", "broad", "from-commands"]
@@ -25,7 +25,7 @@ export default defineCommand({
     to: {
       type: "string",
       default: "opencode",
-      description: "Target format (opencode | codex | pi | antigravity | all)",
+      description: "Target format (opencode | codex | pi | antigravity | vibe | all)",
     },
     output: {
       type: "string",
@@ -42,9 +42,14 @@ export default defineCommand({
       alias: "pi-home",
       description: "Write Pi output to this Pi root (ex: ~/.pi/agent or ./.pi)",
     },
+    vibeHome: {
+      type: "string",
+      alias: "vibe-home",
+      description: "Write Vibe CLI output to this Vibe root (default: $VIBE_HOME or ~/.vibe)",
+    },
     scope: {
       type: "string",
-      description: "Scope level: global | workspace (default varies by target)",
+      description: "Scope level: global (default, user-wide) | workspace (project-local). For vibe: global writes to ~/.vibe, workspace writes to <output>/.vibe",
     },
     also: {
       type: "string",
@@ -85,6 +90,9 @@ export default defineCommand({
     const hasExplicitOutput = Boolean(args.output && String(args.output).trim())
     const codexHome = resolveCodexHome(args.codexHome)
     const piHome = resolveTargetHome(args.piHome, path.join(os.homedir(), ".pi", "agent"))
+    const vibeHome = resolveVibeHome(args.vibeHome)
+    const hasExplicitVibeHome = Boolean(args.vibeHome && String(args.vibeHome).trim())
+    const requestedScope = args.scope ? String(args.scope) : undefined
 
     const options: ClaudeToOpenCodeOptions = {
       agentMode: String(args.agentMode) === "primary" ? "primary" : "subagent",
@@ -94,7 +102,13 @@ export default defineCommand({
     }
 
     if (targetName === "all") {
-      const detected = await detectInstalledTools()
+      const vibeScope = requestedScope
+        ? validateScope("vibe", targets.vibe, requestedScope)
+        : undefined
+      validateVibeOutputOptions({ scope: vibeScope, hasExplicitVibeHome })
+      const detected = await detectInstalledTools(undefined, undefined, {
+        vibeHome: hasExplicitVibeHome ? vibeHome : undefined,
+      })
       const activeTargets = detected.filter((t) => t.detected && targets[t.name]?.implemented)
 
       if (activeTargets.length === 0) {
@@ -127,11 +141,18 @@ export default defineCommand({
           outputRoot,
           codexHome,
           piHome,
+          vibeHome,
           pluginName: plugin.manifest.name,
           hasExplicitOutput,
+          hasExplicitVibeHome,
+          scope: tool.name === "vibe" ? vibeScope : undefined,
         })
-        const writeScope =
-          tool.name === "opencode" ? resolveOpenCodeWriteScope(hasExplicitOutput, undefined) : undefined
+        const writeScope = resolveTargetWriteScope({
+          targetName: tool.name,
+          hasExplicitOutput,
+          hasExplicitVibeHome,
+          vibeScope,
+        })
         await handler.write(root, bundle, writeScope)
         console.log(`Converted ${plugin.manifest.name} to ${tool.name} at ${root}`)
       }
@@ -151,28 +172,42 @@ export default defineCommand({
       throw new Error(`Target ${targetName} is registered but not implemented yet.`)
     }
 
-    const resolvedScope = validateScope(targetName, target, args.scope ? String(args.scope) : undefined)
+    const resolvedScope = validateScope(targetName, target, requestedScope)
+    const extraTargets = parseExtraTargets(args.also)
+    const includesVibe = targetName === "vibe" || extraTargets.includes("vibe")
+    const vibeScope = includesVibe && requestedScope
+      ? validateScope("vibe", targets.vibe, requestedScope)
+      : undefined
+    if (includesVibe) {
+      validateVibeOutputOptions({ scope: vibeScope, hasExplicitVibeHome })
+    }
 
     const primaryOutputRoot = resolveTargetOutputRoot({
       targetName,
       outputRoot,
       codexHome,
       piHome,
+      vibeHome,
       pluginName: plugin.manifest.name,
       hasExplicitOutput,
-      scope: resolvedScope,
+      hasExplicitVibeHome,
+      scope: targetName === "vibe" ? vibeScope : resolvedScope,
     })
     const bundle = target.convert(plugin, options)
     if (!bundle) {
       throw new Error(`Target ${targetName} did not return a bundle.`)
     }
 
-    const effectiveScope =
-      targetName === "opencode" ? resolveOpenCodeWriteScope(hasExplicitOutput, resolvedScope) : resolvedScope
+    const effectiveScope = resolveTargetWriteScope({
+      targetName,
+      hasExplicitOutput,
+      hasExplicitVibeHome,
+      scope: resolvedScope,
+      vibeScope,
+    })
     await target.write(primaryOutputRoot, bundle, effectiveScope)
     console.log(`Converted ${plugin.manifest.name} to ${targetName} at ${primaryOutputRoot}`)
 
-    const extraTargets = parseExtraTargets(args.also)
     const allTargets = [targetName, ...extraTargets]
     for (const extra of extraTargets) {
       const handler = targets[extra]
@@ -194,14 +229,19 @@ export default defineCommand({
         outputRoot,
         codexHome,
         piHome,
+        vibeHome,
         pluginName: plugin.manifest.name,
         hasExplicitOutput,
-        scope: handler.defaultScope,
+        hasExplicitVibeHome,
+        scope: extra === "vibe" ? vibeScope : handler.defaultScope,
       })
-      const extraScope =
-        extra === "opencode"
-          ? resolveOpenCodeWriteScope(hasExplicitOutput, handler.defaultScope)
-          : handler.defaultScope
+      const extraScope = resolveTargetWriteScope({
+        targetName: extra,
+        hasExplicitOutput,
+        hasExplicitVibeHome,
+        scope: handler.defaultScope,
+        vibeScope,
+      })
       await handler.write(extraRoot, extraBundle, extraScope)
       console.log(`Converted ${plugin.manifest.name} to ${extra} at ${extraRoot}`)
     }

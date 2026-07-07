@@ -396,6 +396,14 @@ The bundled `.agy/` directory remains a compatibility entry point (`agy plugin i
 
 See [`.agy/INSTALL.md`](.agy/INSTALL.md) for pinning, local development, uninstall, and legacy Gemini import.
 
+### Vibe
+
+This repo includes a Bun/TypeScript installer that converts the Compound Engineering plugin to Vibe CLI.
+
+```bash
+bunx @every-env/compound-plugin install compound-engineering --to vibe
+```
+
 ---
 
 ## Upgrading an existing install

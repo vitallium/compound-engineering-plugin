@@ -1321,6 +1321,100 @@ describe("CLI", () => {
     expect(await exists(path.join(codexHome, ".codex", "agents", "compound-engineering", "security-sentinel.toml"))).toBe(false)
   })
 
+  test("install routes Vibe output by explicit scope and home selection", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-vibe-routing-"))
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-vibe-routing-ws-"))
+    const projectRoot = path.join(import.meta.dir, "..")
+    const vibeHome = path.join(tempRoot, "profile")
+
+    async function installVibe(args: string[]): Promise<{ exitCode: number; stderr: string }> {
+      const proc = Bun.spawn([
+        "bun",
+        "run",
+        path.join(projectRoot, "src", "index.ts"),
+        "install",
+        fixtureRoot,
+        "--to",
+        "vibe",
+        ...args,
+      ], {
+        cwd: workspaceRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...process.env, HOME: tempRoot, VIBE_HOME: vibeHome },
+      })
+      const exitCode = await proc.exited
+      return { exitCode, stderr: await new Response(proc.stderr).text() }
+    }
+
+    expect((await installVibe([])).exitCode).toBe(0)
+    expect(await exists(path.join(vibeHome, "config.toml"))).toBe(true)
+
+    const workspaceOutput = path.join(tempRoot, "workspace-output")
+    expect((await installVibe(["--output", workspaceOutput])).exitCode).toBe(0)
+    expect(await exists(path.join(workspaceOutput, ".vibe", "config.toml"))).toBe(true)
+
+    const explicitGlobalOutput = path.join(tempRoot, "ignored-workspace-output")
+    expect((await installVibe(["--output", explicitGlobalOutput, "--scope", "global"])).exitCode).toBe(0)
+    expect(await exists(path.join(explicitGlobalOutput, ".vibe", "config.toml"))).toBe(false)
+    expect(await exists(path.join(vibeHome, "config.toml"))).toBe(true)
+
+    const conflictOutput = path.join(tempRoot, "conflict-output")
+    const conflict = await installVibe(["--output", conflictOutput, "--scope", "workspace", "--vibe-home", vibeHome])
+    expect(conflict.exitCode).not.toBe(0)
+    expect(conflict.stderr).toContain("--vibe-home cannot be used with --scope workspace")
+    expect(await exists(path.join(conflictOutput, ".vibe", "config.toml"))).toBe(false)
+  })
+
+  test("install --also vibe and --to all use workspace output for a bare --output", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-vibe-extra-output-"))
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-vibe-extra-ws-"))
+    const projectRoot = path.join(import.meta.dir, "..")
+
+    const extraOutput = path.join(tempRoot, "extra-output")
+    const extraProc = Bun.spawn([
+      "bun",
+      "run",
+      path.join(projectRoot, "src", "index.ts"),
+      "install",
+      fixtureRoot,
+      "--to",
+      "opencode",
+      "--also",
+      "vibe",
+      "--output",
+      extraOutput,
+    ], {
+      cwd: workspaceRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: envWithoutOpenCodeConfig({ HOME: tempRoot }),
+    })
+    expect(await extraProc.exited).toBe(0)
+    expect(await exists(path.join(extraOutput, ".vibe", "config.toml"))).toBe(true)
+
+    const allOutput = path.join(tempRoot, "all-output")
+    await fs.mkdir(path.join(tempRoot, ".vibe"), { recursive: true })
+    const allProc = Bun.spawn([
+      "bun",
+      "run",
+      path.join(projectRoot, "src", "index.ts"),
+      "install",
+      fixtureRoot,
+      "--to",
+      "all",
+      "--output",
+      allOutput,
+    ], {
+      cwd: workspaceRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: envWithoutOpenCodeConfig({ HOME: tempRoot }),
+    })
+    expect(await allProc.exited).toBe(0)
+    expect(await exists(path.join(allOutput, ".vibe", "config.toml"))).toBe(true)
+  })
+
   test("install by name ignores same-named local directory", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-shadow-"))
     const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-shadow-workspace-"))
@@ -1470,6 +1564,42 @@ describe("CLI", () => {
 
     expect(stdout).toContain("Converted compound-engineering")
     expect(await exists(path.join(tempRoot, "opencode.json"))).toBe(true)
+  })
+
+  test("convert --to all detects an explicit Vibe home", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-convert-vibe-all-"))
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-convert-vibe-all-workspace-"))
+    const projectRoot = path.join(import.meta.dir, "..")
+    const vibeHome = path.join(tempRoot, "profiles", "vibe")
+    await fs.mkdir(vibeHome, { recursive: true })
+
+    const proc = Bun.spawn([
+      "bun",
+      "run",
+      path.join(projectRoot, "src", "index.ts"),
+      "convert",
+      fixtureRoot,
+      "--to",
+      "all",
+      "--vibe-home",
+      vibeHome,
+    ], {
+      cwd: workspaceRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, HOME: tempRoot },
+    })
+
+    const exitCode = await proc.exited
+    const stdout = await new Response(proc.stdout).text()
+    const stderr = await new Response(proc.stderr).text()
+
+    if (exitCode !== 0) {
+      throw new Error(`CLI failed (exit ${exitCode}).\nstdout: ${stdout}\nstderr: ${stderr}`)
+    }
+
+    expect(stdout).toContain("Converted compound-engineering to vibe")
+    expect(await exists(path.join(vibeHome, "config.toml"))).toBe(true)
   })
 
   test("convert supports --codex-home for codex output", async () => {
@@ -1970,6 +2100,7 @@ describe("CLI", () => {
     await fs.mkdir(path.join(tempHome, ".factory"), { recursive: true })
     await fs.mkdir(path.join(tempHome, ".copilot"), { recursive: true })
     await fs.mkdir(path.join(tempHome, ".gemini", "antigravity-cli"), { recursive: true })
+    await fs.mkdir(path.join(tempHome, ".vibe"), { recursive: true })
     await fs.mkdir(path.join(tempHome, ".qwen"), { recursive: true })
     await fs.mkdir(path.join(tempCwd, ".cursor"), { recursive: true })
 
@@ -2003,6 +2134,7 @@ describe("CLI", () => {
     expect(stdout).toContain("Installed compound-engineering to opencode")
     expect(stdout).toContain("Installed compound-engineering to pi")
     expect(stdout).toContain("Installed compound-engineering to antigravity")
+    expect(stdout).toContain("Installed compound-engineering to vibe")
     expect(stdout).toContain("droid — native plugin install; skipped")
     expect(stdout).toContain("copilot — native plugin install; skipped")
     expect(stdout).toContain("qwen — native plugin install; skipped")
@@ -2017,6 +2149,7 @@ describe("CLI", () => {
     expect(await exists(path.join(tempHome, ".pi", "agent", "skills", "skill-one", "SKILL.md"))).toBe(true)
     expect(await exists(path.join(tempCwd, ".agy", "skills", "skill-one", "SKILL.md"))).toBe(true)
     expect(await exists(path.join(tempCwd, ".kiro", "skills", "skill-one", "SKILL.md"))).toBe(false)
+    expect(await exists(path.join(tempHome, ".vibe", "config.toml"))).toBe(true)
     expect(await exists(path.join(tempHome, ".qwen", "extensions", "compound-engineering", "qwen-extension.json"))).toBe(false)
   })
 })
