@@ -2,7 +2,7 @@ import os from "os"
 import path from "path"
 import { pathExists } from "./files"
 import { resolveOpenCodeGlobalRoot } from "./opencode-config"
-import { resolveCodexHome } from "./resolve-home"
+import { resolveCodexHome, resolveVibeHome } from "./resolve-home"
 
 export type DetectedTool = {
   name: string
@@ -17,6 +17,8 @@ type DetectableTool = {
 
 type DetectPathOptions = {
   useCodexHomeEnv: boolean
+  useVibeHomeEnv: boolean
+  vibeHome?: string
 }
 
 const detectableTools: DetectableTool[] = [
@@ -74,6 +76,16 @@ const detectableTools: DetectableTool[] = [
     ],
   },
   {
+    name: "vibe",
+    detectPaths: (home, cwd, options) => {
+      const defaultVibeHome = path.join(home, ".vibe")
+      const vibeHome = options.vibeHome ?? (options.useVibeHomeEnv ? resolveVibeHome(undefined) : defaultVibeHome)
+      return vibeHome === defaultVibeHome
+        ? [path.join(cwd, ".vibe"), defaultVibeHome]
+        : [path.join(cwd, ".vibe"), vibeHome, defaultVibeHome]
+    },
+  },
+  {
     name: "qwen",
     detectPaths: (home, cwd) => [
       path.join(home, ".qwen"),
@@ -85,14 +97,19 @@ const detectableTools: DetectableTool[] = [
 export async function detectInstalledTools(
   home?: string,
   cwd: string = process.cwd(),
+  options: { vibeHome?: string } = {},
 ): Promise<DetectedTool[]> {
   const effectiveHome = home ?? os.homedir()
-  const options = { useCodexHomeEnv: home === undefined }
+  const detectOptions = {
+    useCodexHomeEnv: home === undefined,
+    useVibeHomeEnv: home === undefined,
+    vibeHome: options.vibeHome,
+  }
   const results: DetectedTool[] = []
   for (const target of detectableTools) {
     let detected = false
     let reason = "not found"
-    for (const p of target.detectPaths(effectiveHome, cwd, options)) {
+    for (const p of target.detectPaths(effectiveHome, cwd, detectOptions)) {
       if (await pathExists(p)) {
         detected = true
         reason = `found ${p}`

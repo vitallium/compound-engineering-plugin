@@ -242,6 +242,34 @@ export async function cleanupCurrentManagedDirectory(
   return false
 }
 
+// Returns true when the existing path was preserved (skip cleanup AND the
+// subsequent write -- writing through a preserved symlink would clobber the
+// user's fork, which is worse than not overwriting at all).
+export async function cleanupCurrentManagedFile(
+  rootDir: string,
+  targetPath: string,
+  manifest: ManagedInstallManifest | null,
+  group: string,
+  entryName: string,
+): Promise<boolean> {
+  if (!(await isPathWithinRoot(rootDir, targetPath))) {
+    console.warn(`Skipping ${targetPath}: resolves outside the managed store (not modified)`)
+    return true
+  }
+  const stat = await lstatOrNull(targetPath)
+  if (!stat) return false
+  if (stat.isSymbolicLink()) {
+    console.warn(`Skipping ${targetPath}: existing user-managed symlink (not overwritten)`)
+    return true
+  }
+  if (!manifest?.groups[group]?.includes(entryName)) {
+    console.warn(`Skipping ${targetPath}: existing unmanaged file (not overwritten)`)
+    return true
+  }
+  await fs.rm(targetPath, { force: true })
+  return false
+}
+
 export async function moveLegacyArtifactToBackup(
   managedDir: string,
   kind: string,
