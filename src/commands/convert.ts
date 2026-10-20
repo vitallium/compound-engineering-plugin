@@ -4,12 +4,15 @@ import path from "path"
 import { loadClaudePlugin } from "../parsers/claude"
 import { targets, validateScope } from "../targets"
 import type { ClaudeToOpenCodeOptions, PermissionMode } from "../converters/claude-to-opencode"
+import type { ClaudeToVibeOptions } from "../converters/claude-to-vibe"
 import { stripCodexAgentsToolMap } from "../utils/codex-agents"
 import { expandHome, resolveCodexHome, resolveTargetHome, resolveVibeHome } from "../utils/resolve-home"
 import { resolveTargetOutputRoot, resolveTargetWriteScope, validateVibeOutputOptions } from "../utils/resolve-output"
 import { detectInstalledTools } from "../utils/detect-tools"
 
 const permissionModes: PermissionMode[] = ["none", "broad", "from-commands"]
+const vibeSafetyLevels = ["safe", "neutral", "destructive", "yolo"] as const
+type VibeSafetyLevel = (typeof vibeSafetyLevels)[number]
 
 export default defineCommand({
   meta: {
@@ -63,7 +66,18 @@ export default defineCommand({
     agentMode: {
       type: "string",
       default: "subagent",
-      description: "Default agent mode: primary | subagent",
+      description: "Default agent mode: primary | subagent (sets agent_type for the Vibe target)",
+    },
+    defaultModel: {
+      type: "string",
+      alias: "default-model",
+      description: "Default model for generated agents (Vibe target only)",
+    },
+    defaultSafety: {
+      type: "string",
+      default: "safe",
+      alias: "default-safety",
+      description: "Default safety level for generated agents: safe | neutral | destructive | yolo (Vibe target only)",
     },
     inferTemperature: {
       type: "boolean",
@@ -100,6 +114,18 @@ export default defineCommand({
       permissions: permissions as PermissionMode,
       codexIncludeSkills: Boolean(args.includeSkills),
     }
+    const defaultSafety = String(args.defaultSafety ?? "safe")
+    if (!vibeSafetyLevels.includes(defaultSafety as VibeSafetyLevel)) {
+      throw new Error(`Unknown safety level: ${defaultSafety}. Use one of: ${vibeSafetyLevels.join(", ")}`)
+    }
+    // The Vibe converter reads agentType/defaultModel/defaultSafety; other
+    // targets ignore these extra fields (same pattern as codexIncludeSkills).
+    const convertOptions: ClaudeToOpenCodeOptions & ClaudeToVibeOptions = {
+      ...options,
+      agentType: String(args.agentMode) === "primary" ? "agent" : "subagent",
+      defaultModel: args.defaultModel ? String(args.defaultModel) : undefined,
+      defaultSafety: defaultSafety as VibeSafetyLevel,
+    }
 
     if (targetName === "all") {
       const vibeScope = requestedScope
@@ -131,7 +157,7 @@ export default defineCommand({
           console.warn(`Skipping ${tool.name}: not implemented.`)
           continue
         }
-        const bundle = handler.convert(plugin, options)
+        const bundle = handler.convert(plugin, convertOptions)
         if (!bundle) {
           console.warn(`Skipping ${tool.name}: no output returned.`)
           continue
@@ -193,7 +219,7 @@ export default defineCommand({
       hasExplicitVibeHome,
       scope: targetName === "vibe" ? vibeScope : resolvedScope,
     })
-    const bundle = target.convert(plugin, options)
+    const bundle = target.convert(plugin, convertOptions)
     if (!bundle) {
       throw new Error(`Target ${targetName} did not return a bundle.`)
     }
@@ -219,7 +245,7 @@ export default defineCommand({
         console.warn(`Skipping ${extra}: not implemented yet.`)
         continue
       }
-      const extraBundle = handler.convert(plugin, options)
+      const extraBundle = handler.convert(plugin, convertOptions)
       if (!extraBundle) {
         console.warn(`Skipping ${extra}: no output returned.`)
         continue

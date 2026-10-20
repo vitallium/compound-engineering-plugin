@@ -326,4 +326,42 @@ Check \`.claude/launch.json\` for configuration.
       expect(output).toBe("Just plain content without any --- markers")
     })
   })
+
+  describe("Fenced code blocks", () => {
+    test("does not transform content inside fenced code blocks", () => {
+      const input = [
+        "Use the `Agent` tool for delegation.",
+        "",
+        "```js",
+        'const opts = { isolation: "worktree" };',
+        "foo(a,);",
+        "const y = 1 and",
+        "  2;",
+        "```",
+      ].join("\n")
+      const output = transformContentForVibe(input)
+
+      expect(output).toContain("`task` tool")
+      expect(output).toContain('const opts = { isolation: "worktree" };')
+      expect(output).toContain("foo(a,);")
+      expect(output).toContain("const y = 1 and\n  2;")
+    })
+
+    test("handles tilde fences", () => {
+      const input = "AskUserQuestion here\n\n~~~python\nx = f(a,)\n~~~\n\nand TaskCreate after"
+      const output = transformContentForVibe(input)
+
+      expect(output).toContain("ask_user_question here")
+      expect(output).toContain("x = f(a,)")
+      expect(output).toContain("task tracking after")
+    })
+
+    test("treats an unclosed fence as running to the end of the body", () => {
+      const input = "TaskCreate before\n\n```\nTaskCreate inside an unclosed fence"
+      const output = transformContentForVibe(input)
+
+      expect(output).toContain("task tracking before")
+      expect(output).toContain("TaskCreate inside an unclosed fence")
+    })
+  })
 })

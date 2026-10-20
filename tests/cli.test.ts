@@ -1629,6 +1629,78 @@ describe("CLI", () => {
     expect(await exists(path.join(vibeHome, "config.toml"))).toBe(true)
   })
 
+  test("convert --to vibe maps --agentMode, --default-safety, and --default-model to agent config", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-vibe-agent-opts-"))
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-vibe-agent-opts-ws-"))
+    const projectRoot = path.join(import.meta.dir, "..")
+
+    async function convertVibe(vibeHome: string, extraArgs: string[]): Promise<void> {
+      const proc = Bun.spawn([
+        "bun",
+        "run",
+        path.join(projectRoot, "src", "index.ts"),
+        "convert",
+        fixtureRoot,
+        "--to",
+        "vibe",
+        "--vibe-home",
+        vibeHome,
+        ...extraArgs,
+      ], {
+        cwd: workspaceRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...process.env, HOME: tempRoot },
+      })
+      const exitCode = await proc.exited
+      if (exitCode !== 0) {
+        const stderr = await new Response(proc.stderr).text()
+        throw new Error(`CLI failed (exit ${exitCode}).\nstderr: ${stderr}`)
+      }
+    }
+
+    const defaultHome = path.join(tempRoot, "vibe-default")
+    await convertVibe(defaultHome, [])
+    const defaultToml = await fs.readFile(path.join(defaultHome, "agents", "security-sentinel.toml"), "utf8")
+    expect(defaultToml).toContain('agent_type = "subagent"')
+    expect(defaultToml).toContain('safety = "safe"')
+
+    const primaryHome = path.join(tempRoot, "vibe-primary")
+    await convertVibe(primaryHome, ["--agentMode", "primary", "--default-safety", "yolo", "--default-model", "mistral-large-latest"])
+    const primaryToml = await fs.readFile(path.join(primaryHome, "agents", "security-sentinel.toml"), "utf8")
+    expect(primaryToml).toContain('agent_type = "agent"')
+    expect(primaryToml).toContain('safety = "yolo"')
+    expect(primaryToml).toContain('active_model = "mistral-large-latest"')
+  })
+
+  test("convert rejects an unknown --default-safety level", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-vibe-bad-safety-"))
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-vibe-bad-safety-ws-"))
+    const projectRoot = path.join(import.meta.dir, "..")
+
+    const proc = Bun.spawn([
+      "bun",
+      "run",
+      path.join(projectRoot, "src", "index.ts"),
+      "convert",
+      fixtureRoot,
+      "--to",
+      "vibe",
+      "--vibe-home",
+      path.join(tempRoot, ".vibe"),
+      "--default-safety",
+      "bogus",
+    ], {
+      cwd: workspaceRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, HOME: tempRoot },
+    })
+
+    expect(await proc.exited).not.toBe(0)
+    expect(await new Response(proc.stderr).text()).toContain("Unknown safety level: bogus")
+  })
+
   test("convert supports --codex-home for codex output", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "cli-codex-home-"))
     const codexRoot = path.join(tempRoot, ".codex")

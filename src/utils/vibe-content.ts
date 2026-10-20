@@ -3,19 +3,72 @@
  *
  * Handles platform-specific differences:
  * 1. Task-tracking calls: Task(Create|Update|List|Get|Stop|Output) -> neutral guidance
- * 2. Claude paths: .claude/ -> .vibe/
+ * 2. Claude paths: .claude/ paths are preserved (no verified Vibe equivalent)
  * 3. Tool names: AskUserQuestion -> ask_user_question
  * 4. Agent tool references: Agent tool -> task tool
  * 5. Worktree isolation references
  * 6. Skill invocation patterns
+ *
+ * Fenced code blocks (``` or ~~~) are passed through verbatim: the
+ * replacements target prose, and rewriting code samples (e.g. collapsing a
+ * trailing comma) can change their meaning.
  */
 
+type BodySegment = { text: string; isFence: boolean }
+
 /**
- * Transform Claude Code skill/content body to Vibe CLI format.
- * Only transforms the body content, not frontmatter.
+ * Split a markdown body into prose and fenced-code-block segments.
+ * An unclosed fence extends to the end of the body (CommonMark behavior).
  */
-export function transformContentForVibe(body: string): string {
-  let result = body
+function splitFencedBlocks(body: string): BodySegment[] {
+  const lines = body.split("\n")
+  const segments: BodySegment[] = []
+  let prose: string[] = []
+  let fence: string[] = []
+  let fenceChar = ""
+  let fenceLength = 0
+
+  const flushProse = () => {
+    if (prose.length > 0) {
+      segments.push({ text: prose.join("\n"), isFence: false })
+      prose = []
+    }
+  }
+  const flushFence = () => {
+    if (fence.length > 0) {
+      segments.push({ text: fence.join("\n"), isFence: true })
+      fence = []
+    }
+  }
+
+  for (const line of lines) {
+    const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(line)
+    if (fenceChar === "") {
+      if (fenceMatch) {
+        flushProse()
+        fenceChar = fenceMatch[1][0]
+        fenceLength = fenceMatch[1].length
+        fence.push(line)
+      } else {
+        prose.push(line)
+      }
+    } else {
+      fence.push(line)
+      const closing = new RegExp(`^ {0,3}${fenceChar}{${fenceLength},}\\s*$`).test(line)
+      if (closing) {
+        flushFence()
+        fenceChar = ""
+        fenceLength = 0
+      }
+    }
+  }
+  flushProse()
+  flushFence()
+  return segments
+}
+
+function transformProse(prose: string): string {
+  let result = prose
 
   // ========================================================================
   // Phase 1: Task tracking primitives (TaskCreate, TaskUpdate, TaskList, etc.)
@@ -221,4 +274,15 @@ export function transformContentForVibe(body: string): string {
   result = result.replace(/([.!?]) +([A-Z])/g, '$1 $2')
 
   return result
+}
+
+/**
+ * Transform Claude Code skill/content body to Vibe CLI format.
+ * Only transforms the body content, not frontmatter. Fenced code blocks are
+ * passed through verbatim.
+ */
+export function transformContentForVibe(body: string): string {
+  return splitFencedBlocks(body)
+    .map((segment) => (segment.isFence ? segment.text : transformProse(segment.text)))
+    .join("\n")
 }

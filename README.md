@@ -405,7 +405,30 @@ See [`.agy/INSTALL.md`](.agy/INSTALL.md) for pinning, local development, uninsta
 
 ### Vibe
 
-This repo includes a Bun/TypeScript installer that converts the Compound Engineering plugin to Vibe CLI.
+This repo ships a native Vibe plugin manifest at `.vibe-plugin/` (Agent Plugins 1.0). One command generates the skills tree and links the plugin into Vibe's plugin directory:
+
+```bash
+bun run vibe:setup                      # user-global: links into ${VIBE_HOME:-~/.vibe}/plugins/
+bun run vibe:setup -- --scope project   # project-local: links into ./.vibe/plugins/ (folder must be trusted)
+bun run vibe:setup -- --vibe-home /custom/path   # link into a custom Vibe home
+bun run vibe:setup -- --no-link         # only regenerate .vibe-plugin/skills/, do not link
+```
+
+In a running Vibe session run `/reload-plugins` (or start a new session — plugins pin at session start), then check `/plugins`: `compound-engineering` should appear with Scope `user` and all skills under Components. Invoke a skill as `/compound-engineering:<skill-name>`, e.g. `/compound-engineering:ce-plan`.
+
+The `.vibe-plugin/` directory contains the Agent Plugins 1.0 `plugin.json` and a `skills/` tree hardlinked from the repo's shared `skills/` directory. Vibe requires all paths to resolve inside the plugin root, so a symlink to `../skills` is rejected — the setup script uses hardlinks instead (falling back to a copy on filesystems that don't support them), then symlinks the whole `.vibe-plugin/` directory into Vibe's plugins folder. The skills directory is gitignored; re-run `bun run vibe:setup` after cloning or pulling skill changes. Existing entries at the link path are never overwritten.
+
+Do not copy the entire repository into Vibe's plugins directory — the repo root carries manifests for several agent formats, so Vibe would detect the wrong one; link `.vibe-plugin/` instead.
+
+Manual fallback if you prefer not to symlink:
+
+```bash
+bun run vibe:setup -- --no-link
+mkdir -p ~/.vibe/plugins
+ln -s "$(pwd)/.vibe-plugin" ~/.vibe/plugins/compound-engineering
+```
+
+Alternatively, the Bun/TypeScript installer converts the Compound Engineering plugin to the Vibe CLI skills/agents layout:
 
 ```bash
 bunx @every-env/compound-plugin install compound-engineering --to vibe

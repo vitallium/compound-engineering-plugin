@@ -187,6 +187,29 @@ describe("writeVibeBundle", () => {
     expect(files.some((file) => file.startsWith("config.toml.bak."))).toBe(true)
   })
 
+  test("escapes TOML control characters in MCP server fields", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "vibe-toml-escape-"))
+    const vibeRoot = path.join(tempRoot, ".vibe")
+
+    await writeVibeBundle(vibeRoot, {
+      agents: [],
+      generatedSkills: [],
+      skillDirs: [],
+      mcpServers: [
+        {
+          name: "weird\u0001name",
+          transport: "stdio",
+          command: "echo",
+          args: ["a\u0007b"],
+        },
+      ],
+    })
+
+    const config = await fs.readFile(path.join(vibeRoot, "config.toml"), "utf8")
+    expect(config).toContain('name = "weird\\u0001name"')
+    expect(config).toContain('"a\\u0007b"')
+  })
+
   test("does not rewrite config when this plugin has no MCP changes", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "vibe-config-noop-"))
     const vibeRoot = path.join(tempRoot, ".vibe")

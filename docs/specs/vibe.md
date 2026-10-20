@@ -130,7 +130,7 @@ Claude Code tool names are mapped to Vibe CLI tool names:
 | `AskUserQuestion` | `ask_user_question` |
 
 **Notes:**
-- Scoped tool permissions (e.g., `Bash(git status)`) are **not representable** in Vibe CLI and will cause the artifact to be skipped with a warning
+- Scoped tool permissions (e.g., `Bash(git status)`) are **not representable** in Vibe CLI: they are omitted from the allow-list with a warning, and the artifact is skipped entirely when no exact whole-tool mapping remains
 - Unknown tools are omitted from the allow-list
 
 ## Model Mapping
@@ -234,7 +234,7 @@ Same as convert, plus:
 
 ## Limitations
 
-1. **Scoped Tool Permissions**: Vibe CLI only supports whole-tool permissions. Claude Code's scoped permissions like `Bash(git status)` cannot be represented and will cause the affected skill/agent to be skipped.
+1. **Scoped Tool Permissions**: Vibe CLI only supports whole-tool permissions. Claude Code's scoped permissions like `Bash(git status)` cannot be represented: they are dropped from the allow-list with a warning, and the affected skill/agent is skipped entirely when nothing convertible remains.
 
 2. **Claude Model Identifiers**: Claude-specific model names (e.g., `claude-3-sonnet-20240229`) are not valid Vibe model IDs. Known models are mapped automatically; unknown ones are omitted with a warning.
 

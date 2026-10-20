@@ -10,6 +10,11 @@ todos/
 __pycache__/
 *.pyc
 
+# Vibe plugin skills are hardlinked from the root skills/ tree by
+# scripts/setup-vibe-plugin.ts. Hardlinks cannot be tracked by git (they
+# materialize as duplicate files), so the directory is generated at setup time.
+.vibe-plugin/skills/
+
 .compound-engineering/*.local.yaml
 
 # Docs site build output (site/ is the Jekyll source)

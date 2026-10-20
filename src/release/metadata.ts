@@ -41,6 +41,18 @@ type DevinPluginManifest = {
   description?: string
 }
 
+// Vibe Agent Plugins 1.0 manifest. The $schema field is required and must be
+// exactly "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"; any
+// other value produces a fatal plugin.schema.version_unsupported diagnostic.
+type VibePluginManifest = {
+  $schema: string
+  name: string
+  version: string
+  description?: string
+}
+
+const VIBE_PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
+
 type AntigravityManifest = {
   version: string
 }
@@ -265,6 +277,7 @@ export async function syncReleaseMetadata(options: SyncOptions = {}): Promise<Me
   const compoundAntigravityPath = path.join(root, "plugin.json")
   const compoundKimiPath = path.join(root, ".kimi-plugin", "plugin.json")
   const compoundDevinPath = path.join(root, ".devin-plugin", "plugin.json")
+  const compoundVibePath = path.join(root, ".vibe-plugin", "plugin.json")
   const marketplaceClaudePath = path.join(root, ".claude-plugin", "marketplace.json")
   const marketplaceCursorPath = path.join(root, ".cursor-plugin", "marketplace.json")
 
@@ -688,6 +701,45 @@ export async function syncReleaseMetadata(options: SyncOptions = {}): Promise<Me
     }
     updates.push({ path: compoundDevinPath, changed: devinChanged })
     if (write && devinChanged) await writeJson(compoundDevinPath, devin)
+  }
+
+  // Vibe manifest (Agent Plugins 1.0). Vibe installs the repo natively from
+  // `.vibe-plugin/plugin.json` with skills discovered under the plugin's
+  // `skills/` directory (a symlink to the root `skills/` tree). The $schema
+  // field is required and pinned; version sync is detect-only — release-please
+  // owns the write via extra-files, same as Codex/Kimi/Grok/Devin.
+  let vibe: VibePluginManifest | undefined
+  try {
+    vibe = await readJson<VibePluginManifest>(compoundVibePath)
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      errors.push(`${compoundVibePath} is missing but ${compoundClaudePath} exists. Vibe manifest parity required.`)
+      updates.push({ path: compoundVibePath, changed: false })
+    } else {
+      throw err
+    }
+  }
+
+  if (vibe) {
+    if (vibe.$schema !== VIBE_PLUGIN_SCHEMA) {
+      errors.push(
+        `${compoundVibePath}: $schema "${vibe.$schema}" does not match expected "${VIBE_PLUGIN_SCHEMA}". Vibe rejects any other schema URL with a fatal plugin.schema.version_unsupported diagnostic.`,
+      )
+    }
+    if (vibe.name !== "compound-engineering") {
+      errors.push(`${compoundVibePath}: name "${vibe.name}" does not match expected "compound-engineering"`)
+    }
+
+    let vibeChanged = false
+    if (vibe.version !== compoundClaude.version) {
+      vibeChanged = true
+    }
+    if (compoundClaude.description !== undefined && vibe.description !== compoundClaude.description) {
+      vibe.description = compoundClaude.description
+      vibeChanged = true
+    }
+    updates.push({ path: compoundVibePath, changed: vibeChanged })
+    if (write && vibeChanged) await writeJson(compoundVibePath, vibe)
   }
 
   return { updates, errors }

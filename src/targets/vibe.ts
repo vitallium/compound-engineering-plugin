@@ -353,11 +353,13 @@ function formatTomlKey(key: string): string {
 }
 
 function formatTomlString(value: string): string {
-  // TOML basic string escaping - wrap in quotes and escape special characters
-  // Backslash, double-quote, and control characters need escaping
+  // TOML basic string escaping - wrap in quotes and escape special characters.
+  // Backslash and double-quote first, then every control character TOML forbids
+  // raw (all of U+0000-U+001F except tab/LF/CR, plus DEL) as \uXXXX.
   const escaped = value
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`)
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r')
     .replace(/\t/g, '\\t')

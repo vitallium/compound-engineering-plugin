@@ -392,4 +392,43 @@ Body here.
     expect(skill?.content).toContain("- list")
     expect(skill?.content).toContain("- patch")
   })
+
+  test("maps Agent and AskUserQuestion to Vibe task and ask_user_question", () => {
+    const bundle = convertClaudeToVibe({
+      ...fixturePlugin,
+      commands: [
+        {
+          ...fixturePlugin.commands[0],
+          allowedTools: ["Agent", "AskUserQuestion"],
+          sourcePath: "/tmp/plugin/commands/delegate.md",
+        },
+      ],
+    })
+
+    const skill = bundle.generatedSkills[0]
+    expect(skill?.content).toContain("- task")
+    expect(skill?.content).toContain("- ask_user_question")
+  })
+
+  test("truncating a long name never leaves a trailing hyphen", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {})
+    const longName = "a".repeat(63) + "-zz"
+    const bundle = convertClaudeToVibe({
+      ...fixturePlugin,
+      commands: [
+        {
+          ...fixturePlugin.commands[0],
+          name: longName,
+          sourcePath: "/tmp/plugin/commands/long.md",
+        },
+      ],
+    })
+
+    const skill = bundle.generatedSkills[0]
+    expect(skill?.name).toBe("a".repeat(63))
+    expect(skill?.name).not.toMatch(/-$/)
+    expect(skill?.name.length).toBeLessThanOrEqual(64)
+    expect(skill?.content).toContain(`name: ${"a".repeat(63)}`)
+    warn.mockRestore()
+  })
 })

@@ -113,9 +113,11 @@ const TOOL_MAP: Record<string, string> = {
   
   // Patching
   Patch: "patch",
-  
-  // Vibe-specific
+
+  // Delegation and user input
+  Agent: "task",
   Task: "task",
+  AskUserQuestion: "ask_user_question",
   ask_user_question: "ask_user_question",
 }
 
@@ -258,10 +260,14 @@ export function normalizeName(name: string): string {
   
   const originalLength = normalized.length
   if (normalized.length > VIBE_SKILL_NAME_MAX_LENGTH) {
-    normalized = normalized.slice(0, VIBE_SKILL_NAME_MAX_LENGTH)
-    console.warn(`Warning: skill/agent name "${name}" truncated from ${originalLength} to ${VIBE_SKILL_NAME_MAX_LENGTH} characters to fit Vibe CLI limits.`)
+    // Truncation can land on a hyphen; the Agent Skills name rule forbids a
+    // trailing hyphen, so trim after cutting.
+    normalized = normalized.slice(0, VIBE_SKILL_NAME_MAX_LENGTH).replace(/-+$/, "")
+    console.warn(`Warning: skill/agent name "${name}" truncated from ${originalLength} to ${normalized.length} characters to fit Vibe CLI limits.`)
   }
-  
+
+  normalized = normalized.replace(/-+$/, "")
+  if (!normalized) normalized = "ce"
   return normalized.replace(/-+/g, "-")
 }
 
