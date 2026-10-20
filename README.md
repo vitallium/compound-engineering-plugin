@@ -404,7 +404,9 @@ See [`.agy/INSTALL.md`](.agy/INSTALL.md) for pinning, local development, uninsta
 
 ### Vibe
 
-This repo includes a Bun/TypeScript installer that converts the Compound Engineering plugin to Vibe CLI.
+This repo ships a native Vibe plugin manifest at `.vibe-plugin/` (Agent Plugins 1.0). Vibe discovers it automatically when this repository is placed under `.vibe/plugins/compound-engineering/` (project scope) or `~/.vibe/plugins/compound-engineering/` (user global).
+
+Alternatively, the Bun/TypeScript installer converts the Compound Engineering plugin to the Vibe CLI skills/agents layout:
 
 ```bash
 bunx @every-env/compound-plugin install compound-engineering --to vibe

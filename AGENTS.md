@@ -57,6 +57,7 @@ docs/guides/      User-facing plugin guides (catalog and configuration)
 .claude-plugin/   Claude plugin manifest and marketplace catalog metadata
 .codex-plugin/    Codex plugin manifest
 .cursor-plugin/   Cursor plugin manifest and marketplace catalog metadata
+.vibe-plugin/     Vibe Agent Plugins 1.0 manifest (native plugin.json + skills symlink)
 .opencode/        OpenCode package entrypoint and install docs
 .pi/              Pi extension entrypoint
 tests/            Converter, writer, and CLI tests + fixtures

@@ -30,6 +30,7 @@ async function makeFixtureRoot(): Promise<string> {
   await mkdir(path.join(root, ".grok-plugin"), { recursive: true })
   await mkdir(path.join(root, ".omp-plugin"), { recursive: true })
   await mkdir(path.join(root, ".devin-plugin"), { recursive: true })
+  await mkdir(path.join(root, ".vibe-plugin"), { recursive: true })
   await mkdir(path.join(root, ".agents", "plugins"), { recursive: true })
 
   await writeFile(
@@ -86,6 +87,19 @@ async function makeFixtureRoot(): Promise<string> {
     path.join(root, ".devin-plugin", "plugin.json"),
     JSON.stringify(
       {
+        name: "compound-engineering",
+        version: "2.42.0",
+        description: "old",
+      },
+      null,
+      2,
+    ),
+  )
+  await writeFile(
+    path.join(root, ".vibe-plugin", "plugin.json"),
+    JSON.stringify(
+      {
+        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
         name: "compound-engineering",
         version: "2.42.0",
         description: "old",
@@ -374,6 +388,119 @@ describe("release metadata", () => {
 
     const afterContents = JSON.parse(await Bun.file(devinPath).text())
     expect(afterContents.version).toBe("2.41.0")
+  })
+
+  test("reports Vibe plugin.json version drift without auto-correcting", async () => {
+    const root = await makeFixtureRoot()
+    await writeFile(
+      path.join(root, ".vibe-plugin", "plugin.json"),
+      JSON.stringify(
+        {
+          $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+          name: "compound-engineering",
+          version: "2.41.0",
+        },
+        null,
+        2,
+      ),
+    )
+    const result = await syncReleaseMetadata({ root, write: true })
+    const vibePath = path.join(root, ".vibe-plugin", "plugin.json")
+    const vibeUpdate = result.updates.find((u) => u.path === vibePath)
+
+    expect(vibeUpdate).toBeDefined()
+    expect(vibeUpdate!.changed).toBe(true)
+
+    const afterContents = JSON.parse(await Bun.file(vibePath).text())
+    expect(afterContents.version).toBe("2.41.0")
+  })
+
+  test("reports missing Vibe manifest as a structural error", async () => {
+    const root = await makeFixtureRoot()
+    await Bun.$`rm ${path.join(root, ".vibe-plugin", "plugin.json")}`.quiet()
+
+    const result = await syncReleaseMetadata({ root, write: false })
+
+    expect(result.errors.some((err) => err.includes(".vibe-plugin/plugin.json is missing"))).toBe(true)
+  })
+
+  test("reports Vibe plugin.json with wrong $schema as a structural error", async () => {
+    const root = await makeFixtureRoot()
+    await writeFile(
+      path.join(root, ".vibe-plugin", "plugin.json"),
+      JSON.stringify(
+        {
+          $schema: "https://example.com/wrong-schema.json",
+          name: "compound-engineering",
+          version: "2.42.0",
+        },
+        null,
+        2,
+      ),
+    )
+    const result = await syncReleaseMetadata({ root, write: false })
+
+    expect(
+      result.errors.some(
+        (err) =>
+          err.includes(".vibe-plugin/plugin.json") &&
+          err.includes("$schema") &&
+          err.includes("plugin.schema.version_unsupported"),
+      ),
+    ).toBe(true)
+  })
+
+  test("reports Vibe plugin.json name mismatch as structural error", async () => {
+    const root = await makeFixtureRoot()
+    await writeFile(
+      path.join(root, ".vibe-plugin", "plugin.json"),
+      JSON.stringify(
+        {
+          $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+          name: "wrong-name",
+          version: "2.42.0",
+        },
+        null,
+        2,
+      ),
+    )
+    const result = await syncReleaseMetadata({ root, write: false })
+
+    expect(
+      result.errors.some(
+        (err) =>
+          err.includes(".vibe-plugin/plugin.json") &&
+          err.includes('name "wrong-name" does not match expected "compound-engineering"'),
+      ),
+    ).toBe(true)
+  })
+
+  test("rewrites Vibe plugin.json description on write when drifted from Claude", async () => {
+    const root = await makeFixtureRoot()
+    await writeFile(
+      path.join(root, ".vibe-plugin", "plugin.json"),
+      JSON.stringify(
+        {
+          $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+          name: "compound-engineering",
+          version: "2.42.0",
+          description: "old",
+        },
+        null,
+        2,
+      ),
+    )
+    const result = await syncReleaseMetadata({ root, write: true })
+    const vibePath = path.join(root, ".vibe-plugin", "plugin.json")
+    const vibeUpdate = result.updates.find((u) => u.path === vibePath)
+
+    expect(vibeUpdate).toBeDefined()
+    expect(vibeUpdate!.changed).toBe(true)
+
+    const afterContents = JSON.parse(await Bun.file(vibePath).text())
+    expect(afterContents.description).toBe(
+      "Brainstorm, plan, debug, review, and compound learnings with AI agents",
+    )
   })
 
   test("reports Grok plugin.json version drift without auto-correcting", async () => {
